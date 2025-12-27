@@ -18,7 +18,10 @@ export const statusBarAlignment = configRoot.makeMapEntry("filePathBar.statusBar
 const pathStyleObject = Object.freeze
 ({
     "absolute": (path: string) => path,
-    "relative": (path: string) => vscode.workspace.asRelativePath(path),
+    "relative": (path: string) => {
+        const p = path.split("\\");
+        return p.slice(Math.max(0,p.length-2),p.length).join("/")
+    },
 });
 export const pathStyle = configRoot.makeMapEntry ("filePathBar.pathStyle", "root-workspace", pathStyleObject);
 const hasActiveDocument = () => undefined !== vscode.window.activeTextEditor && undefined !== vscode.window.activeTextEditor.viewColumn;
@@ -31,17 +34,18 @@ module StatusBarItem
         text: `$(file) dummy`,
         command: `filePathBar.menu`,
         tooltip: locale.map ( "filePathBar.menu.title" ),
+        // priority: Number.MAX_SAFE_INTEGER
     });
     export const update = (): void =>
     {
         const document = vscode.window.activeTextEditor?.document;
-        if (hasActiveDocument() && document)
-        {
-            pathLabel.text = `${document.isDirty ? "$(primitive-dot)": "$(file)"} ${pathStyle.get("default-scope")(document.fileName)}`;
+        const workspaceFolder = document && vscode.workspace.getWorkspaceFolder(document.uri);
+        const workspaceName = workspaceFolder ? workspaceFolder.name : "No Workspace";
+
+        if (hasActiveDocument() && document) {
+            pathLabel.text = `${pathStyle.get("default-scope")(document.fileName)} (${workspaceName})`;
             pathLabel.show();
-        }
-        else
-        {
+        } else {
             pathLabel.hide();
         }
     };
@@ -67,6 +71,23 @@ module FilePathBar
             vscode.workspace.onDidSaveTextDocument(update),
         );
         update ( );
+
+        // Command to update the window title
+        let disposable = vscode.commands.registerCommand('windowTitleChanger.updateTitle', () => {
+            const workspaceFolder = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0] : undefined;
+            if (workspaceFolder) {
+                const folderName = workspaceFolder.name;
+                const parts = folderName.split('.');
+                var lastPart = parts[parts.length - 1];
+                lastPart += vscode.window?.activeTextEditor?.document.fileName
+                vscode.workspace.getConfiguration('window').update("title",lastPart);
+            }
+        });
+
+        context.subscriptions.push(disposable);
+
+        // Update the window title on startup
+        vscode.commands.executeCommand('windowTitleChanger.updateTitle');
     };
     export const deactivate = () =>
     {
